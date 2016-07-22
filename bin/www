@@ -1,0 +1,87 @@
+'use strict';
+
+var app = require('../app');
+var debug = require('debug')('heart-of-gold:server');
+var http = require('http');
+var irc = require('irc');
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+var server = http.createServer(app);
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+var clients = {};
+
+// var clientSocket;
+var io = require('socket.io')(server);
+io.on('connection', function (socket) {
+  socket.emit('confirmConnection', null);
+  // clientSocket = socket;
+  socket.on('joinRoom', function(room) {
+    console.log('room');
+    socket.join(room);
+    socket.emit('joinRoom', null);
+  });
+
+  socket.on('openVoting', function(info) {
+    clients[info.streamer] = new irc.Client('localhost', 'heart', {
+      channels: [info.channel],
+      port: 6660,
+      debug: false
+    });
+    clients[info.streamer].addListener('message', function (channel, message, text) {
+      io.sockets.in(info.streamer).emit('update', text);
+    });
+    socket.emit('openVoting', null);
+  });
+});
+
+
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+  return false;
+}
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+function onListening() {
+  console.log('listening');
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
